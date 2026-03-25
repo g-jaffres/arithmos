@@ -907,6 +907,9 @@ const MAX_DAILY = 5;
 const HOUR_START = 7, HOUR_END = 21;
 const XP_CORRECT = 15, XP_WRONG = 3, QUESTIONS_PER_SESSION = 5;
 
+// Compte administrateur — accès sans restriction horaire ni limite de participations
+const ADMIN_EMAIL = 'g.jaffres@arithmos.fr';
+
 let currentUser = null;   // Firebase user object
 let currentUserData = {}; // { displayName, classe, avatar }
 let gameState = {};       // { xp, todayParticipations, lastDate } — stocké dans Firestore
@@ -946,19 +949,21 @@ window.login = async function() {
     const cred = await signInWithEmailAndPassword(auth, email, password);
     currentUser = cred.user;
 
-    if (hour < HOUR_START || hour >= HOUR_END) {
+    const isAdmin = currentUser.email === ADMIN_EMAIL;
+
+    if (!isAdmin && (hour < HOUR_START || hour >= HOUR_END)) {
       showBlockedScreen(hour);
       return;
     }
 
-    await initApp();
+    await initApp(isAdmin);
 
   } catch(e) {
     document.getElementById('loginError').textContent = '⚠️ Identifiant ou mot de passe incorrect.';
   }
 };
 
-async function initApp() {
+async function initApp(isAdmin = false) {
   gameState = await loadGameState(currentUser.uid);
 
   // Reset daily si nouveau jour
@@ -968,7 +973,7 @@ async function initApp() {
     await saveGameState(currentUser.uid, gameState);
   }
 
-  if (gameState.todayParticipations >= MAX_DAILY) {
+  if (!isAdmin && gameState.todayParticipations >= MAX_DAILY) {
     showScreen('blockedScreen');
     document.getElementById('blockedIcon').textContent = '🔒';
     document.getElementById('blockedTitle').textContent = 'Tu as tout donné aujourd\'hui !';
@@ -1213,7 +1218,8 @@ async function endSession() {
 
 window.backToApp = async function() {
   const hour = new Date().getHours();
-  if (hour < HOUR_START || hour >= HOUR_END) { showBlockedScreen(hour); return; }
+  const isAdmin = currentUser && currentUser.email === ADMIN_EMAIL;
+  if (!isAdmin && (hour < HOUR_START || hour >= HOUR_END)) { showBlockedScreen(hour); return; }
   if (gameState.lastDate !== todayStr()) {
     gameState.todayParticipations = 0;
     gameState.lastDate = todayStr();
@@ -1250,7 +1256,8 @@ setInterval(() => {
   const isBlocked = hour < HOUR_START || hour >= HOUR_END;
   const onApp = document.getElementById('appScreen').classList.contains('active');
   const onEnd = document.getElementById('endScreen').classList.contains('active');
-  if (isBlocked && currentUser && (onApp || onEnd)) showBlockedScreen(hour);
+  const isAdmin = currentUser && currentUser.email === ADMIN_EMAIL;
+  if (isBlocked && currentUser && !isAdmin && (onApp || onEnd)) showBlockedScreen(hour);
 }, 30000);
 
 </script>
