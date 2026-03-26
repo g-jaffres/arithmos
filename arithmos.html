@@ -244,42 +244,66 @@
 // ==================== LOGIQUE DE CONNEXION ====================
 
 async function startApp() {
-  showScreen('appScreen');
+  // Masquer login, afficher app
+  const loginScr = document.getElementById('loginScreen');
+  const appScr = document.getElementById('appScreen');
+  if (loginScr) loginScr.classList.remove('active');
+  if (appScr) appScr.classList.add('active');
+
   document.getElementById('playerName').textContent = currentUserData.displayName || "Aventurier";
   
   // On attend la config avant de lancer les questions
   await loadConfig();
 
-  if (currentUser.email === ADMIN_EMAIL) {
-    document.getElementById('adminPanel').style.display = 'block';
+  if (currentUser && currentUser.email === ADMIN_EMAIL) {
+    const adminPnl = document.getElementById('adminPanel');
+    if (adminPnl) adminPnl.style.display = 'block';
     loadStats();
   }
   
-  updateUI();
-  generateQuestion();
+  // Ces fonctions doivent être définies ailleurs dans votre code
+  if (typeof updateUI === 'function') updateUI();
+  if (typeof generateQuestion === 'function') generateQuestion();
 }
 
 window.login = async function() {
-  const emailInput = document.getElementById('username').value.trim();
-  const password = document.getElementById('password').value;
+  const userField = document.getElementById('username');
+  const passField = document.getElementById('password');
+  const errField = document.getElementById('loginError');
+
+  if (!userField || !passField) return;
+
+  const emailInput = userField.value.trim();
+  const password = passField.value;
   const email = emailInput.includes('@') ? emailInput : emailInput + '@arithmos.fr';
   
+  if (errField) errField.textContent = "";
+
   try {
     const cred = await signInWithEmailAndPassword(auth, email, password);
     currentUser = cred.user;
     
     // Récupération du profil et des scores
+    const docEleveRef = doc(db, 'eleves', currentUser.uid);
+    const docProfilRef = doc(db, 'profils', currentUser.uid);
+
     const [snapEleve, snapProfil] = await Promise.all([
-      getDoc(doc(db, 'eleves', currentUser.uid)),
-      getDoc(doc(db, 'profils', currentUser.uid))
+      getDoc(docEleveRef),
+      getDoc(docProfilRef)
     ]);
 
-    gameState = snapEleve.exists() ? snapEleve.data() : { xp:0, todayParticipations:0, lastDate:'' };
+    gameState = snapEleve.exists() ? snapEleve.data() : { xp: 0, todayParticipations: 0, lastDate: '' };
     currentUserData = snapProfil.exists() ? snapProfil.data() : { displayName: emailInput };
+
+    // Si c'est un nouvel utilisateur, on peut créer son entrée par défaut pour éviter les erreurs futures
+    if (!snapEleve.exists()) {
+        await setDoc(docEleveRef, gameState);
+    }
 
     startApp();
   } catch (e) {
-    document.getElementById('loginError').textContent = "Identifiant ou mot de passe incorrect.";
+    console.error("Login Error:", e);
+    if (errField) errField.textContent = "Identifiant ou mot de passe incorrect.";
   }
 };
 </script>
@@ -973,6 +997,9 @@ async function saveGameState(uid, state) {
 // ==================== CONFIGURATION & ÉTATS ====================
 const ADMIN_EMAIL = 'g.jaffres@arithmos.fr';
 let activeChapters = { calcul: true, fractions: true, decimaux: true };
+let currentUser = null;
+let gameState = { xp: 0, todayParticipations: 0, lastDate: '' };
+let currentUserData = { displayName: "" };
   // ==================== FONCTIONS ADMIN ====================
 
 // 1. Charger la configuration des chapitres
@@ -982,30 +1009,37 @@ async function loadConfig() {
     if (snap.exists()) {
       activeChapters = snap.data();
       // Met à jour les cases à cocher si on est l'admin
-      if (document.getElementById('check_calcul')) {
-        document.getElementById('check_calcul').checked = activeChapters.calcul;
-        document.getElementById('check_fractions').checked = activeChapters.fractions;
-        document.getElementById('check_decimaux').checked = activeChapters.decimaux;
+      const checkCalcul = document.getElementById('check_calcul');
+      if (checkCalcul) {
+        checkCalcul.checked = !!activeChapters.calcul;
+        document.getElementById('check_fractions').checked = !!activeChapters.fractions;
+        document.getElementById('check_decimaux').checked = !!activeChapters.decimaux;
       }
     }
-  } catch (e) { console.error("Erreur loadConfig:", e); }
+  } catch (e) { 
+    console.error("Erreur loadConfig:", e); 
+  }
 }
 
 // 2. Charger les statistiques des élèves
 async function loadStats() {
-  const querySnapshot = await getDocs(collection(db, "eleves"));
-  const tbody = document.getElementById('statsBody');
-  if (!tbody) return;
-  tbody.innerHTML = "";
-  querySnapshot.forEach((docSnap) => {
-    const data = docSnap.data();
-    const row = `<tr style="border-bottom: 1px solid rgba(0,0,0,0.1)">
-      <td style="padding:5px">${docSnap.id.substring(0,8)}...</td>
-      <td style="text-align:center">${data.xp || 0}</td>
-      <td style="text-align:center">${data.todayParticipations || 0}</td>
-    </tr>`;
-    tbody.innerHTML += row;
-  });
+  try {
+    const querySnapshot = await getDocs(collection(db, "eleves"));
+    const tbody = document.getElementById('statsBody');
+    if (!tbody) return;
+    tbody.innerHTML = "";
+    querySnapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      const row = `<tr style="border-bottom: 1px solid rgba(0,0,0,0.1)">
+        <td style="padding:5px">${docSnap.id.substring(0,8)}...</td>
+        <td style="text-align:center">${data.xp || 0}</td>
+        <td style="text-align:center">${data.todayParticipations || 0}</td>
+      </tr>`;
+      tbody.innerHTML += row;
+    });
+  } catch (e) {
+    console.error("Erreur loadStats (Droits insuffisants ?):", e);
+  }
 }
 // ==================== LOGIN ====================
 window.login = async function() {
