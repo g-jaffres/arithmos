@@ -777,7 +777,7 @@
 // ==================== FIREBASE ====================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyA6V0Jb1GCiwNDODsfz1XoCugYfC_t4A8c",
@@ -960,7 +960,11 @@ window.login = async function() {
     document.getElementById('loginError').textContent = '⚠️ Identifiant ou mot de passe incorrect.';
   }
 };
-
+if (currentUser.email === ADMIN_EMAIL) {
+    document.getElementById('adminPanel').style.display = 'block';
+    loadStats(); 
+    loadConfig();
+  }
 async function initApp(isAdmin = false) {
   gameState = await loadGameState(currentUser.uid);
 
@@ -995,7 +999,9 @@ async function initApp(isAdmin = false) {
 
   startApp();
 }
-
+async function startApp() {
+  showScreen('appScreen');
+  document.getElementById('playerName').textContent = currentUserData.displayName || "Aventurier";
 function showBlockedScreen(hour) {
   showScreen('blockedScreen');
   if (hour >= HOUR_END) {
@@ -1042,7 +1048,9 @@ function getNextLevelData() {
   const cur = getLevelData();
   return LEVELS.find(l => l.level === cur.level+1) || null;
 }
-
+await loadConfig(); 
+  generateQuestion();
+}
 function updateHeader() {
   const ld   = getLevelData();
   const next = getNextLevelData();
