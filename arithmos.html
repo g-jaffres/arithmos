@@ -241,7 +241,48 @@
     margin-top: 8px;
     min-height: 20px;
   }
+// ==================== LOGIQUE DE CONNEXION ====================
 
+async function startApp() {
+  showScreen('appScreen');
+  document.getElementById('playerName').textContent = currentUserData.displayName || "Aventurier";
+  
+  // On attend la config avant de lancer les questions
+  await loadConfig();
+
+  if (currentUser.email === ADMIN_EMAIL) {
+    document.getElementById('adminPanel').style.display = 'block';
+    loadStats();
+  }
+  
+  updateUI();
+  generateQuestion();
+}
+
+window.login = async function() {
+  const emailInput = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  const email = emailInput.includes('@') ? emailInput : emailInput + '@arithmos.fr';
+  
+  try {
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    currentUser = cred.user;
+    
+    // Récupération du profil et des scores
+    const [snapEleve, snapProfil] = await Promise.all([
+      getDoc(doc(db, 'eleves', currentUser.uid)),
+      getDoc(doc(db, 'profils', currentUser.uid))
+    ]);
+
+    gameState = snapEleve.exists() ? snapEleve.data() : { xp:0, todayParticipations:0, lastDate:'' };
+    currentUserData = snapProfil.exists() ? snapProfil.data() : { displayName: emailInput };
+
+    startApp();
+  } catch (e) {
+    document.getElementById('loginError').textContent = "Identifiant ou mot de passe incorrect.";
+  }
+};
+</script>
   /* ========= MAIN APP ========= */
   #appScreen { padding: 16px; justify-content: flex-start; }
 
@@ -777,7 +818,7 @@
 // ==================== FIREBASE ====================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyA6V0Jb1GCiwNDODsfz1XoCugYfC_t4A8c",
@@ -929,7 +970,43 @@ async function saveGameState(uid, state) {
   const ref = doc(db, 'eleves', uid);
   await setDoc(ref, state, { merge: true });
 }
+// ==================== CONFIGURATION & ÉTATS ====================
+const ADMIN_EMAIL = 'g.jaffres@arithmos.fr';
+let activeChapters = { calcul: true, fractions: true, decimaux: true };
+  // ==================== FONCTIONS ADMIN ====================
 
+// 1. Charger la configuration des chapitres
+async function loadConfig() {
+  try {
+    const snap = await getDoc(doc(db, "config_cours", "chapitres"));
+    if (snap.exists()) {
+      activeChapters = snap.data();
+      // Met à jour les cases à cocher si on est l'admin
+      if (document.getElementById('check_calcul')) {
+        document.getElementById('check_calcul').checked = activeChapters.calcul;
+        document.getElementById('check_fractions').checked = activeChapters.fractions;
+        document.getElementById('check_decimaux').checked = activeChapters.decimaux;
+      }
+    }
+  } catch (e) { console.error("Erreur loadConfig:", e); }
+}
+
+// 2. Charger les statistiques des élèves
+async function loadStats() {
+  const querySnapshot = await getDocs(collection(db, "eleves"));
+  const tbody = document.getElementById('statsBody');
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  querySnapshot.forEach((docSnap) => {
+    const data = docSnap.data();
+    const row = `<tr style="border-bottom: 1px solid rgba(0,0,0,0.1)">
+      <td style="padding:5px">${docSnap.id.substring(0,8)}...</td>
+      <td style="text-align:center">${data.xp || 0}</td>
+      <td style="text-align:center">${data.todayParticipations || 0}</td>
+    </tr>`;
+    tbody.innerHTML += row;
+  });
+}
 // ==================== LOGIN ====================
 window.login = async function() {
   const emailInput = document.getElementById('username').value.trim();
